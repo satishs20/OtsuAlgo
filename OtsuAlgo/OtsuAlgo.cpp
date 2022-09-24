@@ -2,6 +2,8 @@
 #include "opencv2/opencv.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "omp.h"
+#include "mpi.h"
+
 
 // install cpp library
 #include <string>
@@ -15,7 +17,7 @@ using namespace cv;
 
 // Otsu Implemented
 
-int OTSU(cv::Mat srcImage) {
+int OTSU(cv::Mat srcImage, int argc, char** argv) {
 	int nCols = srcImage.cols;
 	int nRows = srcImage.rows;
 	int threshold = 0;
@@ -83,7 +85,7 @@ int OTSU(cv::Mat srcImage) {
 	return threshold;
 }
 
-int main()
+int main(int argc, char** argv)
 {
 	double itime, ftime, exec_time;
 	itime = omp_get_wtime();
@@ -106,7 +108,7 @@ int main()
 	imshow("srcGray", srcGray);
 
 	// call the otsu algorithm to get the image
-	int otsuThreshold = OTSU(srcGray);
+	int otsuThreshold = OTSU(srcGray, argc, argv);
 
 	// declared the result output of image
 	cv::Mat otsuResultImage = cv::Mat::zeros(srcGray.rows, srcGray.cols, CV_8UC1);
