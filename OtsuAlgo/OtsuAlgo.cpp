@@ -22,28 +22,56 @@ int OTSU(cv::Mat srcImage, int argc, char** argv) {
 	int nRows = srcImage.rows;
 	int threshold = 0;
 
-	// init the parameters
+	namedWindow("outImage", 0);
+	resizeWindow("outImage", 640, 480);
 
-	int nSumPix[256];
-	float nProDis[256];
-	for (int i = 0; i < 256; i++) {
-		nSumPix[i] = 0;
-		nProDis[i] = 0;
-	}
+	// the total size of the image matrix (rows * columns * channels):
+	size_t imageTotalSize;
 
-	// Count the number of every pixel in the whole painting in the grayscale set
+	// partial size (how many bytes will be sent to each process):
+	size_t imagePartialSize;
 
-	for (int i = 0; i < nRows; i++) {
-		for (int j = 0; j < nCols; j++) {
-			nSumPix[(int)srcImage.at<uchar>(i, j)]++;
-		}
-	}
 
-	// Calculate the probability distribution that each gray level accounts for the image
 
-	for (int i = 0; i < 256; i++) {
-		nProDis[i] = (float)nSumPix[i] / (nCols * nRows);
-	}
+
+	// partial buffer, to contain the image.
+    // 'uchar' means 'unsigned char', i.e. an 8-bit value, because each pixel in an image is a byte (0..255)
+	uchar* partialBuffer;
+
+
+	// start the MPI part
+	MPI_Init(&argc, &argv);
+
+	// get the world size and current rank:
+	int size;
+	int rank;
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+	
+
+	
+
+
+	// get the total size of the image matrix (rows * columns * channels)
+	imageTotalSize = srcImage.step[0] * nRows;
+
+	// get partial size (how many bytes are sent to each process):
+	imagePartialSize = imageTotalSize / size;
+
+
+	// allocate the partial buffer:
+	partialBuffer = new uchar[imagePartialSize];
+
+
+
+	// scatter the image between the processes:
+	MPI_Scatter(srcImage.data, imagePartialSize, MPI_UNSIGNED_CHAR, partialBuffer, imagePartialSize, MPI_UNSIGNED_CHAR, 0, MPI_COMM_WORLD);
+	/*MPI_Scatter(void* send_data,int send_count,MPI_Datatype send_datatype,void* recv_data,int recv_count,MPI_Datatype recv_datatype,int root,MPI_Comm communicator)*/
+	
+	// synchronize the image processing:
+	MPI_Barrier(MPI_COMM_WORLD);
+
 
 	// Traverse the gray level [0, 255] and calculate the value under the maximum inter-class variance
 
@@ -59,14 +87,14 @@ int OTSU(cv::Mat srcImage, int argc, char** argv) {
 			// background part
 
 			if (j <= i) {
-				w0 += nProDis[j];
-				u0_temp += j * nProDis[j];
+				w0 += partialBuffer[j];;
+				u0_temp += j * partialBuffer[j];;
 			}
 
 			// foreground part
 			else {
-				w1 += nProDis[j];
-				u1_temp += j * nProDis[j];
+				w1 += partialBuffer[j];
+				u1_temp += j * partialBuffer[j];;
 			}
 		}
 
@@ -82,6 +110,43 @@ int OTSU(cv::Mat srcImage, int argc, char** argv) {
 			threshold = i;
 		}
 	}
+
+	//output image
+	cv::Mat outImage;
+
+	// initialize the output image (only need to do it in the ROOT process)
+	if (rank == 0)
+	{
+		outImage = cv::Mat(srcImage.size(), srcImage.type(), CV_8UC1);
+	}
+
+	// use the obtained value to perform a binarization operation
+	for (int i = 0; i < srcImage.rows; i++) {
+		for (int j = 0; j < srcImage.cols; j++) {
+
+			// high pixel value judgment
+			if (srcImage.at<uchar>(i, j) > threshold) {
+				outImage.at<uchar>(i, j) = 255;
+			}
+			else
+			{
+				outImage.at<uchar>(i, j) = 0;
+			}
+		}
+	}
+
+	
+	
+	// and now we finally send the partial buffers back to the ROOT, gathering the complete image:
+	MPI_Gather(outImage.data, imagePartialSize, MPI_UNSIGNED_CHAR, partialBuffer, imagePartialSize, MPI_UNSIGNED_CHAR, 0, MPI_COMM_WORLD);
+
+	// Display image, only in the ROOT process
+	if (rank == 0)
+	{
+		cv::imshow( "outImage", outImage );
+		
+	}
+	
 	return threshold;
 }
 
@@ -91,15 +156,12 @@ int main(int argc, char** argv)
 	itime = omp_get_wtime();
 	namedWindow("srcGray", 0);
 	resizeWindow("srcGray", 640, 480);
-	namedWindow("otsuResultImage", 0);
-	resizeWindow("otsuResultImage", 640, 480);
-	namedWindow("dst", 0);
-	resizeWindow("dst", 640, 480);
+
 
 	// Reading and judgment the image
 
 	cv::Mat srcImage;
-	srcImage = cv::imread("khaw.jpg");
+	srcImage = cv::imread("S.jpg");
 	if (!srcImage.data) {
 		return -1;
 	}
@@ -108,25 +170,13 @@ int main(int argc, char** argv)
 	imshow("srcGray", srcGray);
 
 	// call the otsu algorithm to get the image
-	int otsuThreshold = OTSU(srcGray, argc, argv);
+	OTSU(srcGray, argc, argv);
 
 	// declared the result output of image
-	cv::Mat otsuResultImage = cv::Mat::zeros(srcGray.rows, srcGray.cols, CV_8UC1);
+	
 
 	// use the obtained value to perform a binarization operation
-	for (int i = 0; i < srcGray.rows; i++) {
-		for (int j = 0; j < srcGray.cols; j++) {
-
-			// high pixel value judgment
-			if (srcGray.at<uchar>(i, j) > otsuThreshold) {
-				otsuResultImage.at<uchar>(i, j) = 255;
-			}
-			else
-			{
-				otsuResultImage.at<uchar>(i, j) = 0;
-			}
-		}
-	}
+	
 
 	ftime = omp_get_wtime();
 	exec_time = ftime - itime;
@@ -136,9 +186,8 @@ int main(int argc, char** argv)
 	cout << "==================";
 	cout << "hello!!";
 	printf("\n\nTime taken is %f", exec_time);
-
-	// show the output 
-	cv::imshow("otsuResultImage", otsuResultImage);
 	waitKey(0);
+
+	
 	return 0;
 }
