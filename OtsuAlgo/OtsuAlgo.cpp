@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
 
         //Reading the image
         cv::Mat srcGray;
-        srcGray = cv::imread("khaw.jpg");
+        srcGray = cv::imread("L.jpg");
         
         //grayscaling the image
         cvtColor(srcGray, srcImage, cv::COLOR_RGB2GRAY);
@@ -120,7 +120,6 @@ int main(int argc, char** argv) {
     MPI_Barrier(MPI_COMM_WORLD);
 
 
-
     // Traverse the gray level [0, 255] and calculate the value under the maximum inter-class variance
     float w0, w1, u0_temp, u1_temp, u0, u1, delta_temp;
     double delta_max = 0.0;
@@ -165,9 +164,7 @@ int main(int argc, char** argv) {
     {
         outImage = cv::Mat(srcImage.size(), srcImage.type());
     }
-
-   
-   
+ 
     // and now finally send the partial buffers back to the ROOT, gathering the complete image:
     MPI_Gather(partialBuffer, imagePartialSize, MPI_UNSIGNED_CHAR, outImage.data, imagePartialSize, MPI_UNSIGNED_CHAR, 0, MPI_COMM_WORLD);
 
